@@ -236,6 +236,32 @@ def load_model(ckpt_path, device):
     return model, (epoch + 1 if epoch is not None else None), vk
 
 
+def resolve_train_csv(explicit=None):
+    """Locate the competition train.csv (1,975 studies, 25 label columns)."""
+    comp = 'rsna-2024-lumbar-spine-degenerative-classification'
+    cands = ([explicit] if explicit else []) + [
+        CFG['train_csv'],
+        f'/kaggle/input/{comp}/train.csv',
+        f'/kaggle/input/competitions/{comp}/train.csv',
+    ]
+    # shallow glob only (never walk the DICOM folders)
+    for pat in ('*/train.csv', '*/*/train.csv', '*/*/*/train.csv'):
+        cands += [str(p) for p in sorted(Path('/kaggle/input').glob(pat))] if Path('/kaggle/input').exists() else []
+    for c in cands:
+        if not c or not Path(c).is_file():
+            continue
+        try:
+            head = pd.read_csv(c, nrows=1)
+        except Exception:
+            continue
+        if 'study_id' in head.columns and all(col in head.columns for col in LABEL_COLS):
+            print(f'Using train.csv: {c}')
+            return c
+    sys.exit('Could not find the RSNA 2024 competition train.csv. Attach the competition data '
+             '(Add Input -> Competitions -> "RSNA 2024 Lumbar Spine Degenerative Classification") '
+             'or pass --train_csv /path/to/train.csv')
+
+
 def load_splits():
     df = pd.read_csv(CFG['train_csv'])
     for col in LABEL_COLS:
@@ -344,6 +370,7 @@ def bootstrap(long_df, n_macro, n_per, seed=42):
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument('--ckpt', default=None)
+    ap.add_argument('--train_csv', default=None, help='competition train.csv (auto-detected if omitted)')
     ap.add_argument('--jpeg_dir', default=None, help='folder containing <study_id>.jpg (auto-detected if omitted)')
     ap.add_argument('--split', choices=['test', 'val'], default='test')
     ap.add_argument('--bootstrap', type=int, default=0, help='resamples for macro/pooled CIs (paper: 2000)')
@@ -358,6 +385,7 @@ def main():
     device = torch.device(args.device)
     out = Path(args.out_dir); out.mkdir(parents=True, exist_ok=True)
     checks = []
+    CFG['train_csv'] = resolve_train_csv(args.train_csv)
     CFG['jpeg_roots'] = resolve_jpeg_roots(args.jpeg_dir)
 
     train_df, val_df, test_df = load_splits()
