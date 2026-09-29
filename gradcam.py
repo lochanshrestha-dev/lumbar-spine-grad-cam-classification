@@ -55,7 +55,7 @@ import torch.nn.functional as F
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from evaluate import (CFG, CONDITIONS, LEVELS, LABEL_COLS, EXPECTED,  # noqa: E402
-                      find_checkpoint, find_jpeg, load_image, load_model, resolve_jpeg_roots,
+                      find_checkpoint, find_jpeg, load_image, load_model, resolve_jpeg_roots, resolve_train_csv,
                       load_splits, predict, summarize, to_long)
 
 COND_SHORT = {
@@ -184,6 +184,7 @@ def channel_view(study_id, img, cams01, truth, preds, path, max_rows=3):
 def run(args):
     device = torch.device(args.device)
     out = Path(args.out_dir); out.mkdir(parents=True, exist_ok=True)
+    CFG['train_csv'] = resolve_train_csv(args.train_csv)
     CFG['jpeg_roots'] = resolve_jpeg_roots(args.jpeg_dir)
 
     train_df, val_df, test_df = load_splits()
@@ -277,6 +278,7 @@ def run(args):
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument('--ckpt', default=None)
+    ap.add_argument('--train_csv', default=None, help='competition train.csv (auto-detected if omitted)')
     ap.add_argument('--jpeg_dir', default=None, help='folder containing <study_id>.jpg (auto-detected if omitted)')
     ap.add_argument('--n_studies', type=int, default=10)
     ap.add_argument('--study_ids', nargs='*', default=None, help='override automatic selection (validation split)')
