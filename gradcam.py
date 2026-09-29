@@ -15,13 +15,15 @@ What this script does
 3. Selects the N validation-split studies with the most Severe labels
    (default 10). The held-out test split is not touched.
 4. For every study and all 25 outputs, computes Grad-CAM for the SEVERE class
-   logit (class index 2) at backbone.blocks[6], irrespective of the predicted
-   class — as described in the manuscript Methods.
+   logit (class index 2) at backbone.bn2 (final layer before global pooling;
+   primary analysis), irrespective of the predicted class. Other layers via
+   --target_layer (sensitivity analyses: blocks.6, conv_head).
 5. Normalizes the 25 maps of each study on a SHARED scale (divided by the
    study's maximum), so activation magnitude is comparable across outputs.
 6. Writes:
      gradcam_outputs/<study>_gradcam.png   review grid per study
-     gradcam_outputs/Fig2.tif              publication figure (top study; PLOS TIFF, 300 dpi)
+     gradcam_outputs/Fig2.tif              publication figure (top study; PLOS TIFF, 300 dpi;
+                                           heatmaps on the grayscale sagittal T2 channel)
      gradcam_outputs/Fig2_preview.png
      gradcam_outputs/S1_channel_view.png   heatmap shown on each input channel separately
      gradcam_outputs/cam_summary.csv       per study x output: grades, P(Severe), peak/mean activation, centroid
@@ -37,6 +39,7 @@ Usage (Kaggle)
 --------------
     !python gradcam.py
     !python gradcam.py --ckpt /path/to/lumbar_best_v3_nohflip.pth --n_studies 10
+    !python gradcam.py --target_layer blocks.6 --out_dir /kaggle/working/gradcam_blocks6
 """
 
 import argparse
@@ -132,6 +135,9 @@ def publication_figure(img, cams01, truth, preds, out_tif, out_png):
     """PLOS ONE: TIFF, RGB, 300 dpi, max 7.5 in wide."""
     plt.rcParams.update({'font.family': 'DejaVu Sans', 'font.size': 7})
     fig = plt.figure(figsize=(7.5, 8.4))
+    # Background: sagittal T2 channel only (grayscale). The fused RGB composite
+    # mixes sagittal and axial series, whose pixels do not correspond spatially.
+    sag_t2 = np.repeat(img[..., 0:1], 3, axis=2)
     gs = fig.add_gridspec(6, 6, width_ratios=[0.55, 1, 1, 1, 1, 1],
                           height_ratios=[0.18, 1, 1, 1, 1, 1], wspace=0.04, hspace=0.18)
     for j, lv in enumerate(LEVELS):
@@ -143,7 +149,7 @@ def publication_figure(img, cams01, truth, preds, out_tif, out_png):
         for j, lv in enumerate(LEVELS):
             k = LABEL_COLS.index(f'{c}_{lv}')
             ax = fig.add_subplot(gs[i + 1, j + 1])
-            ax.imshow(overlay(img, cams01[k]))
+            ax.imshow(overlay(sag_t2, cams01[k]))
             ax.set_xticks([]); ax.set_yticks([])
             ax.set_xlabel(f'Pred {GRADE_SHORT[preds[k]]} · True {GRADE_SHORT[truth[k]]}', fontsize=6, labelpad=1)
     cax = fig.add_axes([0.30, 0.052, 0.5, 0.012])
@@ -216,7 +222,10 @@ def run(args):
           f"{sel.severe_count.min()}–{sel.severe_count.max()}):")
     print(sel[['study_id', 'severe_count']].to_string(index=False))
 
-    layer = model.backbone.blocks[int(args.target_layer.split('.')[1])]
+    layer = model.backbone
+    for part in args.target_layer.split('.'):
+        layer = layer[int(part)] if part.isdigit() else getattr(layer, part)
+    print(f'Grad-CAM target layer: backbone.{args.target_layer} ({type(layer).__name__})')
     gc = GradCAM(model, layer)
     rows, per_study = [], {}
     for _, row in sel.iterrows():
@@ -282,8 +291,9 @@ def main():
     ap.add_argument('--jpeg_dir', default=None, help='folder containing <study_id>.jpg (auto-detected if omitted)')
     ap.add_argument('--n_studies', type=int, default=10)
     ap.add_argument('--study_ids', nargs='*', default=None, help='override automatic selection (validation split)')
-    ap.add_argument('--target_layer', default='blocks.6')
-    ap.add_argument('--out_dir', default='/kaggle/working/gradcam_outputs')
+    ap.add_argument('--target_layer', default='bn2',
+                    help="backbone sub-module, e.g. bn2 (primary), conv_head, blocks.6")
+    ap.add_argument('--out_dir', default='/kaggle/working/gradcam_bn2')
     ap.add_argument('--skip_val_check', action='store_true')
     ap.add_argument('--device', default='cuda' if torch.cuda.is_available() else 'cpu')
     args, _ = ap.parse_known_args()
