@@ -129,6 +129,36 @@ class LumbarModel(nn.Module):
         return self.head(self.backbone(x)).view(-1, 25, 3)
 
 
+def resolve_jpeg_roots(explicit=None):
+    """Find the folder(s) holding <study_id>.jpg files.
+
+    Tries --jpeg_dir, the training-time path, then walks the lumbar-jpg
+    dataset (depth <= 5) for the directory containing the most .jpg files.
+    """
+    import os
+    cands = [explicit] if explicit else []
+    cands += CFG['jpeg_roots'] + ['/kaggle/input/datasets/drlochanshrestha/lumbar-jpg',
+                                  '/kaggle/input/lumbar-jpg']
+    for c in cands:
+        if c and Path(c).is_dir() and any(Path(c).glob('*.jpg')):
+            return [str(c)]
+    best, best_n = None, 0
+    for base in cands:
+        if not base or not Path(base).is_dir():
+            continue
+        base_depth = str(base).rstrip('/').count('/')
+        for dirpath, dirnames, filenames in os.walk(base):
+            if dirpath.count('/') - base_depth >= 5:
+                dirnames[:] = []
+            n = sum(f.endswith('.jpg') for f in filenames)
+            if n > best_n:
+                best, best_n = dirpath, n
+    if best is None:
+        sys.exit('Could not find the JPEG folder. Pass --jpeg_dir /path/to/folder/with/<study_id>.jpg files')
+    print(f'Using JPEG folder: {best} ({best_n} images)')
+    return [best]
+
+
 def find_jpeg(study_id, roots):
     for r in roots:
         p = Path(r) / f'{int(study_id)}.jpg'
@@ -314,6 +344,7 @@ def bootstrap(long_df, n_macro, n_per, seed=42):
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument('--ckpt', default=None)
+    ap.add_argument('--jpeg_dir', default=None, help='folder containing <study_id>.jpg (auto-detected if omitted)')
     ap.add_argument('--split', choices=['test', 'val'], default='test')
     ap.add_argument('--bootstrap', type=int, default=0, help='resamples for macro/pooled CIs (paper: 2000)')
     ap.add_argument('--bootstrap_per_output', type=int, default=0, help='resamples per output (paper: 1000)')
@@ -327,6 +358,7 @@ def main():
     device = torch.device(args.device)
     out = Path(args.out_dir); out.mkdir(parents=True, exist_ok=True)
     checks = []
+    CFG['jpeg_roots'] = resolve_jpeg_roots(args.jpeg_dir)
 
     train_df, val_df, test_df = load_splits()
     sizes = (len(train_df), len(val_df), len(test_df))
