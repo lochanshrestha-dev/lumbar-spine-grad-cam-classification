@@ -133,31 +133,31 @@ def review_grid(study_id, img, cams01, truth, preds, psev, n_sev, path):
 
 def publication_figure(img, cams01, truth, preds, out_tif, out_png):
     """PLOS ONE: TIFF, RGB, 300 dpi, max 7.5 in wide."""
-    plt.rcParams.update({'font.family': 'DejaVu Sans', 'font.size': 7})
-    fig = plt.figure(figsize=(7.5, 8.4))
+    plt.rcParams.update({'font.family': 'DejaVu Sans', 'font.size': 9})
+    fig = plt.figure(figsize=(7.5, 9.2))
     # Background: sagittal T2 channel only (grayscale). The fused RGB composite
     # mixes sagittal and axial series, whose pixels do not correspond spatially.
     sag_t2 = np.repeat(img[..., 0:1], 3, axis=2)
-    gs = fig.add_gridspec(6, 6, width_ratios=[0.55, 1, 1, 1, 1, 1],
-                          height_ratios=[0.18, 1, 1, 1, 1, 1], wspace=0.04, hspace=0.18)
+    gs = fig.add_gridspec(6, 6, width_ratios=[0.80, 1, 1, 1, 1, 1],
+                          height_ratios=[0.20, 1, 1, 1, 1, 1], wspace=0.05, hspace=0.30)
     for j, lv in enumerate(LEVELS):
         ax = fig.add_subplot(gs[0, j + 1]); ax.axis('off')
-        ax.text(0.5, 0.2, LEVEL_SHORT[lv], ha='center', va='center', fontsize=8, fontweight='bold')
+        ax.text(0.5, 0.2, LEVEL_SHORT[lv], ha='center', va='center', fontsize=11, fontweight='bold')
     for i, c in enumerate(CONDITIONS):
         ax = fig.add_subplot(gs[i + 1, 0]); ax.axis('off')
-        ax.text(0.95, 0.5, COND_SHORT[c], ha='right', va='center', fontsize=8, fontweight='bold')
+        ax.text(0.95, 0.5, COND_SHORT[c], ha='right', va='center', fontsize=11, fontweight='bold')
         for j, lv in enumerate(LEVELS):
             k = LABEL_COLS.index(f'{c}_{lv}')
             ax = fig.add_subplot(gs[i + 1, j + 1])
             ax.imshow(overlay(sag_t2, cams01[k]))
             ax.set_xticks([]); ax.set_yticks([])
-            ax.set_xlabel(f'Pred {GRADE_SHORT[preds[k]]} · True {GRADE_SHORT[truth[k]]}', fontsize=6, labelpad=1)
-    cax = fig.add_axes([0.30, 0.052, 0.5, 0.012])
+            ax.set_xlabel(f'P {GRADE_SHORT[preds[k]]} / T {GRADE_SHORT[truth[k]]}', fontsize=9, labelpad=2)
+    cax = fig.add_axes([0.25, 0.050, 0.6, 0.014])
     sm = plt.cm.ScalarMappable(cmap='jet', norm=plt.Normalize(0, 1))
     cb = fig.colorbar(sm, cax=cax, orientation='horizontal')
-    cb.set_label('Grad-CAM activation for the Severe class (normalized to the study maximum)', fontsize=6.5)
-    cb.ax.tick_params(labelsize=6)
-    fig.subplots_adjust(left=0.01, right=0.99, top=0.99, bottom=0.095)
+    cb.set_label('Grad-CAM activation, Severe class (normalized to study maximum)', fontsize=9)
+    cb.ax.tick_params(labelsize=8)
+    fig.subplots_adjust(left=0.01, right=0.99, top=0.99, bottom=0.11)
     buf = io.BytesIO()
     fig.savefig(buf, format='png', dpi=300, facecolor='white')
     buf.seek(0)
